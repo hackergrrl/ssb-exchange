@@ -1,0 +1,27 @@
+{
+  "name": "ssb-exchange",
+  "description": "",
+  "author": "Stephen Whitmore <sww@eight.net>",
+  "version": "0.0.0",
+  "repository": {
+    "url": "git://github.com/noffle/ssb-exchange.git"
+  },
+  "homepage": "https://github.com/noffle/ssb-exchange",
+  "bugs": "https://github.com/noffle/ssb-exchange/issues",
+  "main": "index.js",
+  "scripts": {
+    "test": "tape test/*.js",
+    "lint": "standard"
+  },
+  "keywords": [],
+  "dependencies": {
+    "pull-stream": "^3.6.8",
+    "secure-scuttlebutt": "^18.0.6",
+    "ssb-keys": "^7.0.16"
+  },
+  "devDependencies": {
+    "tape": "~4.6.2",
+    "standard": "~10.0.0"
+  },
+  "license": "ISC"
+}
