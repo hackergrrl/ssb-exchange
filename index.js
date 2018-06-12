@@ -1,53 +1,77 @@
 var pull = require('pull-stream')
+var cat = require('pull-cat')
 var path = require('path')
 var fs = require('fs')
 var ssbKeys = require('ssb-keys')
+var through = require('through2')
 
-function createDbAndFeed (dir) {
-  var keys = require('ssb-keys').loadOrCreateSync(path.join(dir, 'secret'))
-  var ssb = require('secure-scuttlebutt/create')(path.join(dir, 'db'))
-  var feed = ssb.createFeed(keys)
-  return {ssb: ssb, feed: feed}
+module.exports = function (ssb, name) {
+  var t = through.obj(write)
+
+  var localClock = null
+  var remoteClock = null
+  var localDone = false
+  var remoteDone = false
+
+  ssb.getVectorClock(function (err, clock) {
+    if (err) return t.emit('error', err)
+    // console.log('local', clock)
+    localClock = clock
+    t.push(clock)
+    computeAndSend()
+  })
+
+  return t
+
+  function write (data, _, next) {
+    if (!remoteClock) {
+      remoteClock = data
+      computeAndSend()
+      next()
+    } else if (data === 'done') {
+      remoteDone = true 
+      if (localDone && remoteDone) t.push(null)
+      next()
+    } else if (remoteDone) {
+      next()
+    } else {
+      // console.log('add to', name, 'db', data)
+      ssb.add(data, function (err) {
+        next(err)
+      })
+    }
+  }
+
+  function computeAndSend () {
+    if (!localClock || !remoteClock) return
+    var toSend = computeWhatToSend(localClock, remoteClock)
+    // console.log('gonna send from', name, toSend)
+    var sources = Object.keys(toSend)
+      .map(function (key) {
+        return ssb.createHistoryStream({id: key, seq: toSend[key], keys: false, values: true})
+      })
+    pull(
+      cat(sources),
+      pull.drain(function (msg) {
+      // console.log('sending from', name, msg)
+        t.push(msg)
+      }, function () {
+        t.push('done')
+        localDone = true
+        if (localDone && remoteDone) t.push(null)
+      })
+    )
+  }
 }
 
-var alice = createDbAndFeed('alice')
-var bob = createDbAndFeed('bob')
+function computeWhatToSend (myClock, yourClock) {
+  var res = {}
+  Object.keys(myClock).forEach(function (key) {
+    // remote feed knows at least as much as we do
+    if (yourClock[key] && yourClock[key] >= myClock[key]) return
 
-// alice.feed.add({ type: 'post', text: 'alice\'s First Post!' }, function (err, msg, hash) {
-//   bob.feed.add({ type: 'post', text: 'bob\'s First Post!' }, function (err, msg, hash) {
-//     var ws = bob.ssb.createWriteStream(function (err, writes) {
-//       console.log('done', err, writes)
-//     })
-//     pull(
-//       alice.ssb.createLogStream({keys: false, values: true}),
-//       pull.asyncMap(function (msg, next) {
-//         console.log('alice msg', msg)
-//         bob.ssb.add(msg, next)
-//       }),
-//       pull.collect(function (err, msgs) {
-//         console.log('wrote', msgs.length, 'to bob\'s db')
-//       })
-//     )
-//   })
-// })
-
-// stream all messages for all keypairs.
-// pull(
-//   ssb.createFeedStream(),
-//   pull.collect(function (err, ary) {
-//     console.log(ary)
-//   })
-// )
-
-printFeed(bob)
-
-// stream all messages for a particular keypair.
-function printFeed (db) {
-  pull(
-    db.ssb.createHistoryStream({id: db.feed.id, seq: 0}),
-    // db.ssb.createLogStream({}),
-    pull.drain(function (msg) {
-      console.log(msg)
-    })
-  )
+    // send their clock seq and onward
+    res[key] = yourClock[key] || 0
+  })
+  return res
 }
