@@ -21,8 +21,8 @@ alice.feed.add({ type: 'post', text: 'alice\'s First Post!' }, function (err, ms
 })
 
 function sync () {
-  var r1 = exchange(alice.ssb, 'alice')
-  var r2 = exchange(bob.ssb, 'bob')
+  var r1 = replicate(alice.ssb, 'alice')
+  var r2 = replicate(bob.ssb, 'bob')
 
   r1.pipe(r2).pipe(r1)
 
